@@ -1,0 +1,4 @@
+MVP: 
+Fixed price good production (-> fixed price trade?)\
+Game speeds changeable
+ 

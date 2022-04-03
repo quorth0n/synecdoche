@@ -6,17 +6,18 @@ use bevy_egui::{egui, EguiContext, EguiPlugin};
 
 mod components;
 
-const TICK_LENGTH: f32 = 0.25;
+const TICK_LENGTH: u64 = 200;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .insert_resource(TickTimer(Timer::from_seconds(0.5, true)))
+        .insert_resource(TickTimer(Timer::from_seconds(TICK_LENGTH as f32, true)))
         .insert_resource(GameSpeed(0))
         .add_startup_system(setup_system)
-        .add_state(GameState::Playing)
+        .add_state(GameState::Paused)
+        // tick systems
         .add_system_set(SystemSet::on_update(GameState::Playing).with_system(greet_people))
-
+        // UI
         .add_plugin(EguiPlugin)
         .add_system(paint_ui)
         .run();
@@ -25,20 +26,15 @@ fn main() {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum GameState {
     Paused,
-    Playing 
+    Playing,
 }
 
-struct GameSpeed(u32);
+struct GameSpeed(u64);
 
 struct TickTimer(Timer);
 
-fn greet_people(
-    time: Res<Time>, mut timer: ResMut<TickTimer>, speed: Res<GameSpeed>, mut query: Query<&mut Province>) {
-    let adj_delta = (time.delta().as_millis() as f64 * (speed.0 as f64 / 5.0)) as u64;
-    let tick = Duration::from_millis(adj_delta);
-
-    // tick our timer with elapsed time, adjusted for game speed
-    if timer.0.tick(tick).just_finished() {
+fn greet_people(time: Res<Time>, mut timer: ResMut<TickTimer>, mut query: Query<&mut Province>) {
+    if timer.0.tick(time.delta()).just_finished() {
         for mut city in query.iter_mut() {
             city.pops += 100;
             println!("hello {}!", city.pops);
@@ -47,25 +43,43 @@ fn greet_people(
 }
 
 fn setup_system(mut commands: Commands) {
-    commands.spawn().insert(Province {pops: 10000});
+    commands.spawn().insert(Province { pops: 10000 });
 }
 
-fn paint_ui(mut egui_context: ResMut<EguiContext>, mut speed: ResMut<GameSpeed>, mut commands: Commands) {
-    egui::CentralPanel::default().show(&egui_context.ctx_mut(), |ui| {
+fn paint_ui(
+    mut egui_context: ResMut<EguiContext>,
+    mut speed: ResMut<GameSpeed>,
+    mut timer: ResMut<TickTimer>,
+    mut state: ResMut<State<GameState>>,
+) {
+    // Top bar
+    egui::TopBottomPanel::top("cool panel").show(&egui_context.ctx_mut(), |ui| {
         if ui.button("-").clicked() {
             speed.0 = match speed.0 {
                 0 => 0,
-                i => i - 1
+                i => i - 1,
             };
-            commands.insert_resource(TickTimer(Timer::from_seconds((speed.0 as f32 * TICK_LENGTH).min(TICK_LENGTH), true)));
+
+            if speed.0 == 0 && *state.current() != GameState::Paused {
+                state.set(GameState::Paused).unwrap();
+            }
+
+            let adj_ms = (6 - speed.0) * TICK_LENGTH;
+            timer.0.set_duration(Duration::from_millis(adj_ms));
         }
         ui.label(format!("Speed {}", speed.0));
         if ui.button("+").clicked() {
             speed.0 = match speed.0 {
                 5 => 5,
-                i => i + 1
+                i => i + 1,
             };
-            commands.insert_resource(TickTimer(Timer::from_seconds((speed.0 as f32 * TICK_LENGTH).min(TICK_LENGTH), true)));
+
+            if *state.current() != GameState::Playing {
+                state.set(GameState::Playing).unwrap();
+            }
+
+            let adj_ms = (6 - speed.0) * TICK_LENGTH;
+            timer.0.set_duration(Duration::from_millis(adj_ms));
         }
     });
 }
